@@ -20,6 +20,6 @@
         "gipfl/systemd": ">=0.3",
         "react/promise": "^2",
         "react/event-loop": ">=1.1",
-        "psr/log": ">=3.0"
+        "psr/log": ">=1.0"
     }
 }
