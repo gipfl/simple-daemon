@@ -2,35 +2,33 @@
 
 namespace gipfl\SimpleDaemon;
 
+use Evenement\EventEmitterInterface;
+use Evenement\EventEmitterTrait;
 use Exception;
 use gipfl\SystemD\NotifySystemD;
 use Psr\Log\LoggerAwareInterface;
-use Psr\Log\LoggerInterface;
+use Psr\Log\LoggerAwareTrait;
+use Psr\Log\NullLogger;
 use React\EventLoop\LoopInterface;
 use React\Promise\Deferred;
 use function React\Promise\resolve;
 use function sprintf;
 
-class Daemon
+class Daemon implements LoggerAwareInterface, EventEmitterInterface
 {
+    use EventEmitterTrait;
+    use LoggerAwareTrait;
+
     /** @var LoopInterface */
     private $loop;
 
     /** @var NotifySystemD|boolean */
     protected $systemd;
 
-    /** @var LoggerInterface */
-    protected $logger;
-
     /** @var DaemonTask[] */
     protected $daemonTasks = [];
 
     protected $tasksStarted = false;
-
-    public function __construct(LoggerInterface $logger)
-    {
-        $this->logger = $logger;
-    }
 
     public function run(LoopInterface $loop)
     {
@@ -49,7 +47,7 @@ class Daemon
     public function attachTask(DaemonTask $task)
     {
         if ($task instanceof LoggerAwareInterface) {
-            $task->setLogger($this->logger);
+            $task->setLogger($this->logger ?: new NullLogger());
         }
         if ($this->systemd && $task instanceof SystemdAwareTask) {
             $task->setSystemd($this->systemd);
@@ -91,20 +89,6 @@ class Daemon
         return $deferred->promise();
     }
 
-    protected function setDaemonStatus($status, $logLevel = null, $sendReady = false)
-    {
-        if ($this->logger && $logLevel !== null) {
-            $this->logger->$logLevel($status);
-        }
-        if ($this->systemd) {
-            if ($sendReady) {
-                $this->systemd->setReady($status);
-            } else {
-                $this->systemd->setStatus($status);
-            }
-        }
-    }
-
     protected function registerSignalHandlers()
     {
         $func = function ($signal) use (&$func) {
@@ -123,19 +107,12 @@ class Daemon
     protected function shutdown()
     {
         try {
-            $this->setDaemonStatus('Shutting down', 'notice');
             $this->stopTasks();
         } catch (Exception $e) {
-            if ($this->systemd) {
-                $this->systemd->setError(sprintf(
-                    'Failed to safely shutdown, stopping anyways: %s',
-                    $e->getMessage()
-                ));
-            }
-            $this->logger->error(sprintf(
+            $this->emit('error', [sprintf(
                 'Failed to safely shutdown, stopping anyways: %s',
                 $e->getMessage()
-            ));
+            )]);
         }
         $this->loop->stop();
     }
