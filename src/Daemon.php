@@ -38,6 +38,10 @@ class Daemon
         $this->registerSignalHandlers();
         $this->systemd = NotifySystemD::ifRequired($loop);
         $loop->futureTick(function () {
+            if ($this->systemd) {
+                $this->systemd->setReady();
+            }
+
             $this->startTasks();
         });
     }
