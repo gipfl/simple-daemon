@@ -47,6 +47,9 @@ class Daemon
         if ($task instanceof LoggerAwareInterface) {
             $task->setLogger($this->logger);
         }
+        if ($this->systemd && $task instanceof SystemdAwareTask) {
+            $task->setSystemd($this->systemd);
+        }
 
         $this->daemonTasks[] = $task;
         if ($this->tasksStarted) {
