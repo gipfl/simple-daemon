@@ -55,13 +55,10 @@ class Daemon implements LoggerAwareInterface
         if ($task instanceof LoggerAwareInterface) {
             $task->setLogger($this->logger ?: new NullLogger());
         }
-        if ($this->systemd && $task instanceof SystemdAwareTask) {
-            $task->setSystemd($this->systemd);
-        }
 
         $this->daemonTasks[] = $task;
         if ($this->tasksStarted) {
-            $task->start($this->loop);
+            $this->startTask($task);
         }
     }
 
@@ -69,8 +66,17 @@ class Daemon implements LoggerAwareInterface
     {
         $this->tasksStarted = true;
         foreach ($this->daemonTasks as $task) {
-            $task->start($this->loop);
+            $this->startTask($task);
         }
+    }
+
+    protected function startTask(DaemonTask $task)
+    {
+        if ($this->systemd && $task instanceof SystemdAwareTask) {
+            $task->setSystemd($this->systemd);
+        }
+
+        $task->start($this->loop);
     }
 
     protected function stopTasks()
