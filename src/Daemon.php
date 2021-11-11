@@ -2,9 +2,8 @@
 
 namespace gipfl\SimpleDaemon;
 
-use Evenement\EventEmitterInterface;
-use Evenement\EventEmitterTrait;
 use Exception;
+use gipfl\Cli\Process;
 use gipfl\SystemD\NotifySystemD;
 use Psr\Log\LoggerAwareInterface;
 use Psr\Log\LoggerAwareTrait;
@@ -12,11 +11,11 @@ use Psr\Log\NullLogger;
 use React\EventLoop\LoopInterface;
 use React\Promise\Deferred;
 use function React\Promise\resolve;
+use function React\Promise\Timer\timeout;
 use function sprintf;
 
-class Daemon implements LoggerAwareInterface, EventEmitterInterface
+class Daemon implements LoggerAwareInterface
 {
-    use EventEmitterTrait;
     use LoggerAwareTrait;
 
     /** @var LoopInterface */
@@ -28,10 +27,17 @@ class Daemon implements LoggerAwareInterface, EventEmitterInterface
     /** @var DaemonTask[] */
     protected $daemonTasks = [];
 
+    /** @var bool */
     protected $tasksStarted = false;
+
+    /** @var bool */
+    protected $reloading = false;
 
     public function run(LoopInterface $loop)
     {
+        if ($this->logger === null) {
+            $this->setLogger(new NullLogger());
+        }
         $this->loop = $loop;
         $this->registerSignalHandlers();
         $this->systemd = NotifySystemD::ifRequired($loop);
@@ -94,6 +100,10 @@ class Daemon implements LoggerAwareInterface, EventEmitterInterface
         $func = function ($signal) use (&$func) {
             $this->shutdownWithSignal($signal, $func);
         };
+        $funcReload = function () {
+            $this->reload();
+        };
+        $this->loop->addSignal(SIGHUP, $funcReload);
         $this->loop->addSignal(SIGINT, $func);
         $this->loop->addSignal(SIGTERM, $func);
     }
@@ -104,16 +114,37 @@ class Daemon implements LoggerAwareInterface, EventEmitterInterface
         $this->shutdown();
     }
 
-    protected function shutdown()
+    public function reload()
     {
-        try {
-            $this->stopTasks();
-        } catch (Exception $e) {
-            $this->emit('error', [sprintf(
-                'Failed to safely shutdown, stopping anyways: %s',
-                $e->getMessage()
-            )]);
+        if ($this->reloading) {
+            $this->logger->error('Ignoring reload request, reload is already in progress');
+            return;
         }
-        $this->loop->stop();
+        $this->reloading = true;
+        $this->logger->notice('Stopping tasks, going gown for reload now');
+        if ($this->systemd) {
+            $this->systemd->setReloading('Reloading the main process');
+        }
+        $this->stopTasks()->then(function () {
+            $this->logger->notice('Everything stopped, restarting');
+            Process::restart();
+        });
+    }
+
+    public function shutdown()
+    {
+        timeout($this->stopTasks(), 5, $this->loop)->then(function () {
+            $this->loop->stop();
+        }, function (Exception $e) {
+            if ($this->logger) {
+                $this->logger->error(sprintf(
+                    'Failed to safely shutdown, stopping anyways: %s',
+                    $e->getMessage()
+                ));
+            }
+            $this->loop->addTimer(0.1, function () {
+                $this->loop->stop();
+            });
+        });
     }
 }
