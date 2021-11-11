@@ -107,6 +107,7 @@ class DaemonState implements JsonSerialization, EventEmitterInterface
         } else {
             $this->componentStates[$name] = $stateMessage;
         }
+        $this->refreshMessage();
 
         return $this;
     }
