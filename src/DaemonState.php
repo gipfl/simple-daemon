@@ -140,6 +140,7 @@ class DaemonState implements JsonSerialization, EventEmitterInterface
         return $self;
     }
 
+    #[\ReturnTypeWillChange]
     public function jsonSerialize()
     {
         return (object) [
