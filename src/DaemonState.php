@@ -155,7 +155,7 @@ class DaemonState implements JsonSerialization, EventEmitterInterface
     {
         $messageParts = [];
         $state = $this->getState();
-        if (strlen($state)) {
+        if ($state !== null && strlen($state)) {
             $messageParts[] = $state;
         }
         foreach ($this->getComponentStates() as $component => $message) {
